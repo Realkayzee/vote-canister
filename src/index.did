@@ -1,0 +1,30 @@
+type Contestant = record {
+  tag : float64;
+  electionCreator : principal;
+  voteCount : int32;
+  name : text;
+  createdAt : nat64;
+  updatedAt : opt nat64;
+};
+type Create = record {
+  id : principal;
+  created : bool;
+  started : bool;
+  createdAt : nat64;
+  ended : bool;
+  contestantTags : vec int32;
+};
+type _AzleResult = variant { Ok : Contestant; Err : text };
+type _AzleResult_1 = variant { Ok : int32; Err : text };
+type _AzleResult_2 = variant { Ok : Create; Err : text };
+type _AzleResult_3 = variant { Ok : vec Create; Err : text };
+service : () -> {
+  addContestant : (text) -> (_AzleResult);
+  checkResult : (int32) -> (_AzleResult_1) query;
+  createElection : () -> (_AzleResult_2);
+  endElection : () -> (_AzleResult_2);
+  getElectionCreations : () -> (_AzleResult_3) query;
+  getStatus : (principal) -> (opt Create) query;
+  startElection : () -> (_AzleResult_2);
+  vote : (int32) -> (_AzleResult);
+}
