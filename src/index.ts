@@ -1,156 +1,178 @@
-import { $query, $update, Record, StableBTreeMap, Vec, match, Result, nat64, ic, Opt, Principal, int32} from "azle";
+import { $query, $update, Record, StableBTreeMap, Vec, match, Result, nat64, ic, Opt, Principal, int32 } from "azle";
 
 type Contestant = Record<{
-    tag: number;
-    name: string;
-    voteCount: int32;
-    createdAt: nat64;
-    updatedAt: Opt<nat64>;
-    electionCreator: Principal;
-}>
+  tag: int32;
+  name: string;
+  voteCount: int32;
+  createdAt: nat64;
+  updatedAt: Opt<nat64>;
+  electionCreator: Principal;
+}>;
 
 type Create = Record<{
-    id: Principal;
-    created: boolean;
-    createdAt: nat64;
-    contestantTags: Vec<int32>;
-    started: boolean;
-    ended: boolean;
-}>
+  id: Principal;
+  created: boolean;
+  createdAt: nat64;
+  contestantTags: Vec<int32>;
+  started: boolean;
+  ended: boolean;
+}>;
 
-let tagId:int32 = 1;
+let tagId: int32 = 1;
 
-// Election must e created before adding contestant
 const createElectionStorage = new StableBTreeMap<Principal, Create>(0, 38, 100_000);
-
-// key to value mapping to track each contestant data by their tag
 const contestantStorage = new StableBTreeMap<int32, Contestant>(1, 38, 100_000);
-// key to value mapping to know when a user has voted. The key is of the format
-// caller principal + creator principal
 const voted = new StableBTreeMap<string, boolean>(2, 100, 8);
 
-
-
-// Function used to create an election before adding contestants
 $update
 export function createElection(): Result<Create, string> {
-    const create: Create = {
-        id: ic.caller(),
-        created: true,
-        createdAt: ic.time(),
-        contestantTags: [],
-        started: false,
-        ended: false
-    }
+  const caller = ic.caller();
+  if (createElectionStorage.get(caller).isSome()) {
+    return Result.Err<Create, string>(`Election already created by ${caller.toString()}`);
+  }
 
-    createElectionStorage.insert(create.id, create);
-    return Result.Ok(create);
+  const create: Create = {
+    id: caller,
+    created: true,
+    createdAt: ic.time(),
+    contestantTags: [],
+    started: false,
+    ended: false
+  };
+
+  createElectionStorage.insert(caller, create);
+  return Result.Ok(create);
 }
 
-
-// function responsible for adding contestants
-// Note: Only Election creator can add contestant.
-// Note: Contestant cannot be added for election that already started or ended.
 $update
-export function addContestant(_name: string): Result<Contestant, string> {
-    let _tag:number = tagId;
-    tagId = tagId + 1;
+export function addContestant(name: string): Result<Contestant, string> {
+  const caller = ic.caller();
+  const createOption = createElectionStorage.get(caller);
 
-    return match(createElectionStorage.get(ic.caller()), {
-        Some: (create) => {
-            const updateCreate: Create = {...create, contestantTags: [...create.contestantTags, _tag]};
-            createElectionStorage.insert(ic.caller(), updateCreate)
+  if (createOption.isNone()) {
+    return Result.Err<Contestant, string>(`Election not found for ${caller.toString()}`);
+  }
 
-            if(create.created && !create.ended && !create.started){
-                const contestant: Contestant = {
-                    tag: _tag,
-                    name: _name,
-                    voteCount: 0,
-                    createdAt: ic.time(),
-                    updatedAt: Opt.None,
-                    electionCreator: ic.caller()
-                }
+  const create = createOption.unwrap();
 
-                contestantStorage.insert(contestant.tag, contestant);
-                return Result.Ok<Contestant, string>(contestant);
-            }else{
-                return Result.Err<Contestant, string>(`error adding contestant, either election as started or ended.`)
-            }
-        },
-        None: () => Result.Err<Contestant, string>(`principal=${ic.caller()} has not created an election`)
-    })
+  if (create.started || create.ended) {
+    return Result.Err<Contestant, string>(`Cannot add contestant to a started or ended election`);
+  }
+
+  const tag: int32 = tagId;
+  tagId = tagId + 1;
+
+  const contestant: Contestant = {
+    tag: tag,
+    name: name,
+    voteCount: 0,
+    createdAt: ic.time(),
+    updatedAt: Opt.None,
+    electionCreator: caller
+  };
+
+  contestantStorage.insert(tag, contestant);
+  const updatedCreate: Create = { ...create, contestantTags: [...create.contestantTags, tag] };
+  createElectionStorage.insert(caller, updatedCreate);
+
+  return Result.Ok(contestant);
 }
 
-// Function for election creator to open voting
 $update
 export function startElection(): Result<Create, string> {
-    return match(createElectionStorage.get(ic.caller()), {
-        Some: (create) => {
-            const updateStarted: Create = {...create, started: true};
+  const caller = ic.caller();
+  const createOption = createElectionStorage.get(caller);
 
-            createElectionStorage.insert(ic.caller(), updateStarted);
-            return Result.Ok<Create, string>(updateStarted);
-        },
-        None: () => Result.Err<Create, string>(`Error starting election`)
-    })
+  if (createOption.isNone()) {
+    return Result.Err<Create, string>(`Election not found for ${caller.toString()}`);
+  }
+
+  const create = createOption.unwrap();
+  if (create.started) {
+    return Result.Err<Create, string>(`Election has already started`);
+  }
+
+  const updatedCreate: Create = { ...create, started: true };
+  createElectionStorage.insert(caller, updatedCreate);
+  return Result.Ok(updatedCreate);
 }
 
-// Function for election creator to end voting
 $update
 export function endElection(): Result<Create, string> {
-    return match(createElectionStorage.get(ic.caller()), {
-        Some: (create) => {
-            const updateEnded: Create = {...create, ended: true};
+  const caller = ic.caller();
+  const createOption = createElectionStorage.get(caller);
 
-            createElectionStorage.insert(ic.caller(), updateEnded);
-            return Result.Ok<Create, string>(updateEnded);
-        },
-        None: () => Result.Err<Create, string>(`Error ending election`)
-    })
+  if (createOption.isNone()) {
+    return Result.Err<Create, string>(`Election not found for ${caller.toString()}`);
+  }
+
+  const create = createOption.unwrap();
+  if (create.ended) {
+    return Result.Err<Create, string>(`Election has already ended`);
+  }
+
+  const updatedCreate: Create = { ...create, ended: true };
+  createElectionStorage.insert(caller, updatedCreate);
+  return Result.Ok(updatedCreate);
 }
 
-
-// Function that handles users voting
-// Note: Users can only vote ones for a particular election created
 $update
-export function vote(_tag:int32): Result<Contestant, string> {
-    return match(contestantStorage.get(_tag), {
-        Some: (contestant) => {
-            const status = getStatus(contestant.electionCreator)
-            if(status.Some?.started && !status.Some?.ended){
-                const updateContestant: Contestant = {...contestant, voteCount: (contestant.voteCount + 1), updatedAt: Opt.Some(ic.time())};
-                contestantStorage.insert(_tag, updateContestant);
+export function vote(tag: int32): Result<Contestant, string> {
+  const caller = ic.caller();
+  const createOption = createElectionStorage.get(caller);
 
-                const caller = ic.caller().toString();
-                const creator = ic.caller().toString();
-                const keyValue = caller + creator;
+  if (createOption.isNone()) {
+    return Result.Err<Contestant, string>(`Election not found for ${caller.toString()}`);
+  }
 
-                voted.insert(keyValue, true)
+  const create = createOption.unwrap();
+  if (!create.started || create.ended) {
+    return Result.Err<Contestant, string>(`Cannot vote in the current election`);
+  }
 
-                return Result.Ok<Contestant, string>(updateContestant);
+  const contestantOption = contestantStorage.get(tag);
 
-            } else{
-                return Result.Err<Contestant, string>(`Election hasn't started`)
-            }
-        },
-        None: () => Result.Err<Contestant, string>(`Unable to vote`)
-    })
+  if (contestantOption.isNone()) {
+    return Result.Err<Contestant, string>(`Contestant not found with tag ${tag}`);
+  }
+
+  const contestant = contestantOption.unwrap();
+  const keyValue = `${caller.toString()}${contestant.electionCreator.toString()}`;
+
+  if (voted.get(keyValue).isSome()) {
+    return Result.Err<Contestant, string>(`Already voted for the current election`);
+  }
+
+  const updatedContestant: Contestant = {
+    ...contestant,
+    voteCount: contestant.voteCount + 1,
+    updatedAt: Opt.Some(ic.time())
+  };
+
+  contestantStorage.insert(tag, updatedContestant);
+  voted.insert(keyValue, true);
+
+  return Result.Ok(updatedContestant);
 }
 
 $query
 export function getStatus(principal: Principal): Opt<Create> {
-    return createElectionStorage.get(principal)
+  return createElectionStorage.get(principal);
 }
 
 $query
-export function checkResult(_tag:int32): Result<int32, string> {
-    return match(contestantStorage.get(_tag), {
-        Some: (contestant) => Result.Ok<int32, string>(contestant.voteCount),
-        None: () => Result.Err<int32, string>(`Result not found`)
-    })
+export function checkResult(tag: int32): Result<int32, string> {
+  const contestantOption = contestantStorage.get(tag);
+
+  if (contestantOption.isNone()) {
+    return Result.Err<int32, string>(`Contestant not found with tag ${tag}`);
+  }
+
+  const contestant = contestantOption.unwrap();
+  return Result.Ok(contestant.voteCount);
 }
 
 $query
-export function getElectionCreations(): Result<Vec<Create>, string> {
-    return Result.Ok(createElectionStorage.values());
+export function getElectionCreations(): Vec<Create> {
+  return createElectionStorage.values();
 }
