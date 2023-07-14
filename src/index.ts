@@ -29,6 +29,8 @@ const contestantStorage = new StableBTreeMap<int32, Contestant>(1, 38, 100_000);
 // caller principal + creator principal
 const voted = new StableBTreeMap<string, boolean>(2, 100, 8);
 
+
+
 // Function used to create an election before adding contestants
 $update
 export function createElection(): Result<Create, string> {
@@ -108,12 +110,6 @@ export function endElection(): Result<Create, string> {
 }
 
 
-$query
-export function getStatus(principal: Principal): Opt<Create> {
-    return createElectionStorage.get(principal)
-}
-
-
 // Function that handles users voting
 // Note: Users can only vote ones for a particular election created
 $update
@@ -139,6 +135,11 @@ export function vote(_tag:int32): Result<Contestant, string> {
         },
         None: () => Result.Err<Contestant, string>(`Unable to vote`)
     })
+}
+
+$query
+export function getStatus(principal: Principal): Opt<Create> {
+    return createElectionStorage.get(principal)
 }
 
 $query
