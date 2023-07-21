@@ -146,7 +146,7 @@ $query
 export function getStatus(principal: Principal): Result<Create,string> {
     return match(createElectionStorage.get(principal), {
         Some: (election) => Result.Ok<Create, string>(election),
-        None: () => Result.Err<Create, string>(`Principal=${ic.caller()} has not created an election`)
+        None: () => Result.Err<Create, string>(`Principal=${principal} has not created an election`)
     })
 }
 
