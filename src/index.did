@@ -24,7 +24,7 @@ service : () -> {
   createElection : () -> (_AzleResult_2);
   endElection : () -> (_AzleResult_2);
   getElectionCreations : () -> (_AzleResult_3) query;
-  getStatus : (principal) -> (opt Create) query;
+  getElectionStatus : (principal) -> (opt Create) query;
   startElection : () -> (_AzleResult_2);
   vote : (int32) -> (_AzleResult);
 }
