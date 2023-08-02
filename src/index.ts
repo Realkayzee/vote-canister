@@ -74,10 +74,10 @@ export function addContestant(_name: string): Result<Contestant, string> {
                 contestantStorage.insert(contestant.tag, contestant);
                 return Result.Ok<Contestant, string>(contestant);
             }else{
-                return Result.Err<Contestant, string>(`error adding contestant, either election as started or ended.`)
+                return Result.Err<Contestant, string>(`Error adding contestant, either election has started or ended.`)
             }
         },
-        None: () => Result.Err<Contestant, string>(`principal=${ic.caller()} has not created an election`)
+        None: () => Result.Err<Contestant, string>(`Principal=${ic.caller()} has not created an election`)
     })
 }
 
@@ -86,12 +86,15 @@ $update
 export function startElection(): Result<Create, string> {
     return match(createElectionStorage.get(ic.caller()), {
         Some: (create) => {
+            if(create.contestantTags.length < 2){
+                return Result.Err<Create,string>("Can't start an election without at least two contestants")
+            }
             const updateStarted: Create = {...create, started: true};
 
             createElectionStorage.insert(ic.caller(), updateStarted);
             return Result.Ok<Create, string>(updateStarted);
         },
-        None: () => Result.Err<Create, string>(`Error starting election`)
+        None: () => Result.Err<Create, string>(`Principal=${ic.caller()} has not created an election`)
     })
 }
 
@@ -105,7 +108,7 @@ export function endElection(): Result<Create, string> {
             createElectionStorage.insert(ic.caller(), updateEnded);
             return Result.Ok<Create, string>(updateEnded);
         },
-        None: () => Result.Err<Create, string>(`Error ending election`)
+        None: () => Result.Err<Create, string>(`Principal=${ic.caller()} has not created an election`)
     })
 }
 
@@ -117,29 +120,34 @@ export function vote(_tag:int32): Result<Contestant, string> {
     return match(contestantStorage.get(_tag), {
         Some: (contestant) => {
             const status = getStatus(contestant.electionCreator)
-            if(status.Some?.started && !status.Some?.ended){
-                const updateContestant: Contestant = {...contestant, voteCount: (contestant.voteCount + 1), updatedAt: Opt.Some(ic.time())};
-                contestantStorage.insert(_tag, updateContestant);
-
+            if(status.Ok?.started && !status.Ok?.ended){
                 const caller = ic.caller().toString();
                 const creator = ic.caller().toString();
                 const keyValue = caller + creator;
+                if(voted.get(keyValue).Some){
+                    return Result.Err<Contestant,string>("Caller has already voted for this election")
+                }
+                const updateContestant: Contestant = {...contestant, voteCount: (contestant.voteCount + 1), updatedAt: Opt.Some(ic.time())};
+                contestantStorage.insert(_tag, updateContestant);
 
                 voted.insert(keyValue, true)
 
                 return Result.Ok<Contestant, string>(updateContestant);
 
             } else{
-                return Result.Err<Contestant, string>(`Election hasn't started`)
+                return Result.Err<Contestant, string>(`Election is over or hasn't yet started`)
             }
         },
-        None: () => Result.Err<Contestant, string>(`Unable to vote`)
+        None: () => Result.Err<Contestant, string>(`Contestant not found`)
     })
 }
 
 $query
-export function getStatus(principal: Principal): Opt<Create> {
-    return createElectionStorage.get(principal)
+export function getStatus(principal: Principal): Result<Create,string> {
+    return match(createElectionStorage.get(principal), {
+        Some: (election) => Result.Ok<Create, string>(election),
+        None: () => Result.Err<Create, string>(`Principal=${principal} has not created an election`)
+    })
 }
 
 $query
@@ -153,4 +161,4 @@ export function checkResult(_tag:int32): Result<int32, string> {
 $query
 export function getElectionCreations(): Result<Vec<Create>, string> {
     return Result.Ok(createElectionStorage.values());
-} 
+}
