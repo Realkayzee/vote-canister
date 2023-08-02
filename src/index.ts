@@ -153,4 +153,4 @@ export function checkResult(_tag:int32): Result<int32, string> {
 $query
 export function getElectionCreations(): Result<Vec<Create>, string> {
     return Result.Ok(createElectionStorage.values());
-}
+} 
