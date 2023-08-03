@@ -7,10 +7,12 @@ type Contestant = Record<{
     createdAt: nat64;
     updatedAt: Opt<nat64>;
     electionCreator: Principal;
+    electionTag: int32;
 }>
 
 type Create = Record<{
     id: Principal;
+    electionTag: int32;
     created: boolean;
     createdAt: nat64;
     contestantTags: Vec<int32>;
@@ -18,6 +20,7 @@ type Create = Record<{
     ended: boolean;
 }>
 
+let tag:int32 = 0;
 let tagId:int32 = 1;
 
 // Election must e created before adding contestant
@@ -26,7 +29,7 @@ const createElectionStorage = new StableBTreeMap<Principal, Create>(0, 38, 100_0
 // key to value mapping to track each contestant data by their tag
 const contestantStorage = new StableBTreeMap<int32, Contestant>(1, 38, 100_000);
 // key to value mapping to know when a user has voted. The key is of the format
-// caller principal + creator principal
+// election tag + creator principal
 const voted = new StableBTreeMap<string, boolean>(2, 100, 8);
 
 
@@ -36,12 +39,14 @@ $update
 export function createElection(): Result<Create, string> {
     const create: Create = {
         id: ic.caller(),
+        electionTag: tag,
         created: true,
         createdAt: ic.time(),
         contestantTags: [],
         started: false,
         ended: false
     }
+    tag = tag + 1;
 
     createElectionStorage.insert(create.id, create);
     return Result.Ok(create);
@@ -68,7 +73,8 @@ export function addContestant(_name: string): Result<Contestant, string> {
                     voteCount: 0,
                     createdAt: ic.time(),
                     updatedAt: Opt.None,
-                    electionCreator: ic.caller()
+                    electionCreator: ic.caller(),
+                    electionTag: create.electionTag
                 }
 
                 contestantStorage.insert(contestant.tag, contestant);
@@ -121,9 +127,9 @@ export function vote(_tag:int32): Result<Contestant, string> {
         Some: (contestant) => {
             const status = getStatus(contestant.electionCreator)
             if(status.Ok?.started && !status.Ok?.ended){
-                const caller = ic.caller().toString();
+                const tag = contestant.electionTag.toString(); // stringify election tag to create uniquedfness
                 const creator = ic.caller().toString();
-                const keyValue = caller + creator;
+                const keyValue = tag + creator;
                 if(voted.get(keyValue).Some){
                     return Result.Err<Contestant,string>("Caller has already voted for this election")
                 }
@@ -135,7 +141,7 @@ export function vote(_tag:int32): Result<Contestant, string> {
                 return Result.Ok<Contestant, string>(updateContestant);
 
             } else{
-                return Result.Err<Contestant, string>(`Election is over or hasn't yet started`)
+                return Result.Err<Contestant, string>(`Election is over or hasn't started yet started`)
             }
         },
         None: () => Result.Err<Contestant, string>(`Contestant not found`)
@@ -161,4 +167,9 @@ export function checkResult(_tag:int32): Result<int32, string> {
 $query
 export function getElectionCreations(): Result<Vec<Create>, string> {
     return Result.Ok(createElectionStorage.values());
+}
+
+$query
+export function getVote(): Result<Vec<boolean>, string> {
+    return Result.Ok(voted.values())
 }
