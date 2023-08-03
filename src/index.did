@@ -1,15 +1,16 @@
 type Contestant = record {
   tag : float64;
-  electionCreator : principal;
   voteCount : int32;
   name : text;
   createdAt : nat64;
   electionTag : int32;
   updatedAt : opt nat64;
+  parentId : text;
 };
 type Create = record {
-  id : principal;
+  id : text;
   created : bool;
+  creator : principal;
   started : bool;
   createdAt : nat64;
   electionTag : int32;
@@ -22,13 +23,13 @@ type _AzleResult_2 = variant { Ok : Create; Err : text };
 type _AzleResult_3 = variant { Ok : vec Create; Err : text };
 type _AzleResult_4 = variant { Ok : vec bool; Err : text };
 service : () -> {
-  addContestant : (text) -> (_AzleResult);
+  addContestant : (text, text) -> (_AzleResult);
   checkResult : (int32) -> (_AzleResult_1) query;
   createElection : () -> (_AzleResult_2);
-  endElection : () -> (_AzleResult_2);
+  endElection : (text) -> (_AzleResult_2);
   getElectionCreations : () -> (_AzleResult_3) query;
-  getStatus : (principal) -> (_AzleResult_2) query;
+  getStatus : (text) -> (_AzleResult_2) query;
   getVote : () -> (_AzleResult_4) query;
-  startElection : () -> (_AzleResult_2);
+  startElection : (text) -> (_AzleResult_2);
   vote : (int32) -> (_AzleResult);
 }
